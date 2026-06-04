@@ -1,0 +1,4 @@
+confidentials.py
+__pycache__/
+*.pyc
+.vscode/
