@@ -4,15 +4,42 @@ import time
 import email
 from email.header import decode_header
 from confidentials import Chat_id, bot_token, app_password 
+
 def sendMessage(message):
     url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
     requests.post(url, data = {"chat_id": Chat_id, "text": message})
+
+def fetch_email_IDS():
+    imap.noop()
+    status, messages = imap.search(None, "ALL")
+    return messages[0].split()
+
+def get_email(latest_message):
+    status, data = imap.fetch(latest_message, "(RFC822)")
+    raw_email = None
+    for item in data:
+        if isinstance(item, tuple):
+            raw_email = item[1]
+            break
+    if raw_email == None:
+        return None
+    mail = email.message_from_bytes(raw_email)
+    return mail
+
+def format_message(Mail):
+    header = decode_header(Mail['Subject'])[0][0]
+    if isinstance(header, bytes):
+            subject = header.decode("utf-8")
+    else:
+        subject = header
+    message =  f"📧 NEW EMAIL👤\n\n Sender:{Mail.get('From', 'Unkown')}\nSubject:{subject}\nReceived:{Mail.get('Date', 'Unkown')}\nMessage id: {Mail.get('Message-ID', "Unkown")}"
+    return message
+
 imap = imaplib.IMAP4_SSL("imap.gmail.com")
 imap.login("yrajbhar669@gmail.com",  app_password)
 imap.select("INBOX")
-imap.noop()
-status, messages = imap.search(None, "ALL")
-email_ids = messages[0].split()
+
+email_ids = fetch_email_IDS()
 if email_ids:
     last_seen = email_ids[-1]
 else:
@@ -21,24 +48,18 @@ print("Last seen:", last_seen)
 while True:
     time.sleep(5)
     print("checking...")
-    imap.noop()
-    status, messages = imap.search(None, "ALL")
-    email_ids = messages[0].split()
+    email_ids = fetch_email_IDS()
+    if last_seen == b"0":
+        last_seen = email_ids[-1]
     last_index = email_ids.index(last_seen)
     latest_messages = email_ids[last_index + 1 :]
-    print("Latest Message: ", latest_messages)
+    
+    print("Latest Message/s: ", latest_messages)
     for latest_message in latest_messages:
-        if int(latest_message) != int(last_seen):
-            status, data = imap.fetch(latest_message, "(RFC822)")
-            raw_email = None
-            for item in data:
-                if isinstance(item, tuple):
-                    raw_email = item[1]
-                    break
-            if raw_email == None:
-                continue
-            Mail = email.message_from_bytes(raw_email)
-            # print(Mail.keys())
-            message =  f"📧 NEW EMAIL👤\n\n Sender:{Mail.get('From', 'Unkown')}\nSubject:{decode_header(Mail['Subject'])}\nReceived:{Mail.get('Date', 'Unkown')}\nMessage id: {Mail.get('Message-ID', "Unkown")}"
-            sendMessage(message)
-            last_seen = latest_message
+        Mail = get_email(latest_message)
+        if Mail is None:
+            continue
+        # print(Mail.keys())
+        message = format_message(Mail)
+        sendMessage(message)
+        last_seen = latest_message
