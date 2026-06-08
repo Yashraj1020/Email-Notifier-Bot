@@ -1,0 +1,17 @@
+multipart/alternative
+<bound method Message.is_multipart of <email.message.Message object at 0x00000146DAF1B290>>
+
+
+text/plain
+text/html
+
+
+
+[<email.message.Message object at 0x00000271DDFDE4E0>, <email.message.Message object at 0x00000271DE18BE00>]
+multipart/alternative
+
+testing email
+text/plain
+
+<div dir="auto">testing email</div>
+text/html
