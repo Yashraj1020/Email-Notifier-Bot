@@ -4,7 +4,10 @@ import time
 import email
 from email.header import decode_header
 from bs4 import BeautifulSoup
-from confidentials import Chat_id, bot_token, app_password 
+from confidentials import Chat_id, bot_token, app_password, api_key, Prompt_template
+from google import genai
+
+client = genai.Client(api_key= api_key)
 
 def sendMessage(message):
     url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
@@ -27,27 +30,44 @@ def get_email(latest_message):
     mail = email.message_from_bytes(raw_email)
     return mail
 
-def format_message(Mail, text):
+def format_message(Mail, text, summary):
     header = decode_header(Mail['Subject'])[0][0]
     if isinstance(header, bytes):
             subject = header.decode("utf-8")
     else:
         subject = header
-    message =  f"📧 NEW EMAIL👤\n\n Sender:{Mail.get('From', 'Unkown')}\n\nSubject:{subject}\n\nReceived:{Mail.get('Date', 'Unkown')}\n\n Body:\n{text}\n ______________"
-    return message
+    if summary == None:
+        message1 =  f"📧 NEW EMAIL👤\n\n Sender:{Mail.get('From', 'Unkown')}\n\nSubject:{subject}\n\nReceived:{Mail.get('Date', 'Unkown')}\n\n Body:\n{text}\n ______________"
+        return message1
+    else:
+        message2 =  f"📧 NEW EMAIL👤\n\n Sender:{Mail.get('From', 'Unkown')}\n\nSubject:{subject}\n\nReceived:{Mail.get('Date', 'Unkown')}\n\n {summary}\n ______________"
+        return message2
 
 def extract_body(Mail):
     content_type = Mail.get_content_type()
+
     if content_type == "text/plain":
         return Mail.get_payload()
     elif content_type == "multipart/alternative" or content_type == "multipart/mixed":
         for part in Mail.walk():
             if part.get_content_type() == "text/plain":
                 return part.get_payload()
-            elif part.get_content_type == "text/html":
+            elif part.get_content_type() == "text/html":
                 html = part.get_payload()
                 soup = BeautifulSoup(html, "html.parser")
-                return soup.get_text(part)
+                return soup.get_text()
+    else:
+        return None
+
+def get_AI_summary(text, client):
+    if len(text.split()) <= 20:
+        return None
+    prompt = Prompt_template.format(body=text)
+    summary = client.models.generate_content(
+        model="models/gemini-flash-lite-latest",
+        contents = prompt
+    )
+    return summary.text
 
 imap = imaplib.IMAP4_SSL("imap.gmail.com")
 imap.login("yrajbhar669@gmail.com",  app_password)
@@ -75,7 +95,11 @@ while True:
             continue
         # print(Mail.keys())
         text = extract_body(Mail)
-        message = format_message(Mail, text)
+        if text is not None:
+            summary = get_AI_summary(text, client)
+        else: 
+            summary = None
+        message = format_message(Mail, text, summary)
         sendMessage(message)
         last_seen = latest_message
         # print(Mail.get_content_type())
