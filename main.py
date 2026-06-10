@@ -7,6 +7,7 @@ from bs4 import BeautifulSoup
 from confidentials import Chat_id, bot_token, app_password, api_key, Prompt_template
 from google import genai
 from datetime import datetime
+import json
 
 client = genai.Client(api_key= api_key)
 
@@ -63,7 +64,7 @@ def extract_body(Mail):
         return None
 
 def get_AI_summary(text, client):
-    if len(text.split()) <= 20:
+    if not summarize_short_emails and len(text.split()) <= minimum_words:
         return None
     prompt = Prompt_template.format(body=text)
     summary = client.models.generate_content(
@@ -78,8 +79,15 @@ def logs(log):
         current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         log_file.write(f"{log}  -->   {current_time}\n")
 
+with open("config.json") as f:
+    config = json.load(f)
+    interval_time = config["Interval_time"]
+    minimum_words = config["Minimum_words"]
+    summarize_short_emails = config["summarize_short_emails"]
+    gmail = config["Gmail"]
+
 imap = imaplib.IMAP4_SSL("imap.gmail.com")
-imap.login("yrajbhar669@gmail.com",  app_password)
+imap.login(gmail,  app_password)
 imap.select("INBOX")
 logs(f"\nGmail account Logged in succesfully! \n")
 
@@ -90,7 +98,7 @@ else:
     last_seen = b"0"
 print("Last seen:", last_seen)
 while True:
-    time.sleep(5)
+    time.sleep(interval_time)
     print("checking...")
     email_ids = fetch_email_IDS()
     if last_seen not in email_ids:
