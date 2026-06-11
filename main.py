@@ -13,9 +13,21 @@ client = genai.Client(api_key= api_key)
 
 def sendMessage(message):
     url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
-    requests.post(url, data = {"chat_id": Chat_id, "text": message})
-    logs(f"Message Sent\n")
+    requests.post(
+        url, 
+        data= {"chat_id": Chat_id, "text": message},
+        )
+    logs("Message Sent\n")
 
+def send_documents(file_name, file_data):
+    url = f"https://api.telegram.org/bot{bot_token}/sendDocument"
+    requests.post(
+        url,
+        data={"chat_id": Chat_id},
+        files= {"document": (file_name, file_data)}
+    )
+    logs("Attachments sent \n")
+    print(file_name, len(file_data))
 def fetch_email_IDS():
     imap.noop()
     status, messages = imap.search(None, "ALL")
@@ -34,17 +46,17 @@ def get_email(latest_message):
     mail = email.message_from_bytes(raw_email)
     return mail
 
-def format_message(Mail, text, summary):
+def format_message(Mail, text, summary, attachments, number_of_attachments):
     header = decode_header(Mail['Subject'])[0][0]
     if isinstance(header, bytes):
             subject = header.decode("utf-8")
     else:
         subject = header
     if summary == None:
-        message1 =  f"📧 NEW EMAIL👤\n\n Sender:{Mail.get('From', 'Unkown')}\n\nSubject:{subject}\n\nReceived:{Mail.get('Date', 'Unkown')}\n\n Body:\n{text}\n ______________"
+        message1 =  f"📧 NEW EMAIL👤\n\n Sender:{Mail.get('From', 'Unkown')}\n\nSubject:{subject}\n\nReceived:{Mail.get('Date', 'Unkown')}\n\n Body:\n{text}\n\nIncluding {number_of_attachments} attachments:\n{'\n'.join(attachments)}\n ______________"
         return message1
     else:
-        message2 =  f"📧 NEW EMAIL👤\n\n Sender:{Mail.get('From', 'Unkown')}\n\nSubject:{subject}\n\nReceived:{Mail.get('Date', 'Unkown')}\n\n {summary}\n ______________"
+        message2 =  f"📧 NEW EMAIL👤\n\n Sender:{Mail.get('From', 'Unkown')}\n\nSubject:{subject}\n\nReceived:{Mail.get('Date', 'Unkown')}\n\n {summary}\n\nIncluding {number_of_attachments} attachments:\n{'\n'.join(attachments)}\n ______________"
         return message2
 
 def extract_body(Mail):
@@ -79,11 +91,20 @@ def logs(log):
         current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         log_file.write(f"{log}  -->   {current_time}\n")
 
+def process_attachments(Mail):
+    folder = []
+    for part in Mail.walk():
+        file_name = part.get_filename()
+        if file_name:
+            file_data = part.get_payload(decode=True)
+            folder.append((file_name, file_data))
+    return folder
+
 with open("config.json") as f:
     config = json.load(f)
     interval_time = config["Interval_time"]
     minimum_words = config["Minimum_words"]
-    summarize_short_emails = config["summarize_short_emails"]
+    summarize_short_emails = config["Summarize_short_emails"]
     gmail = config["Gmail"]
 
 imap = imaplib.IMAP4_SSL("imap.gmail.com")
@@ -98,8 +119,8 @@ else:
     last_seen = b"0"
 print("Last seen:", last_seen)
 while True:
-    time.sleep(interval_time)
     print("checking...")
+    time.sleep(interval_time)
     email_ids = fetch_email_IDS()
     if last_seen not in email_ids:
         latest_messages = email_ids
@@ -116,8 +137,12 @@ while True:
             summary = get_AI_summary(text, client)
         else: 
             summary = None
-        message = format_message(Mail, text, summary)
+        attachments = process_attachments(Mail)
+        number_of_attachments = len(attachments)
+        message = format_message(Mail, text, summary, [name for name, _ in attachments], number_of_attachments)
         sendMessage(message)
+        for file_name, file_data in attachments:
+            send_documents(file_name, file_data)
         last_seen = latest_message
         # print(Mail.get_content_type())
         # print(Mail.is_multipart)

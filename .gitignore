@@ -2,3 +2,5 @@ confidentials.py
 __pycache__/
 *.pyc
 .vscode/
+logs.txt
+test.py

@@ -15,3 +15,9 @@ text/plain
 
 <div dir="auto">testing email</div>
 text/html
+
+multipart/mixed
+multipart/alternative
+text/plain
+text/html
+application/pdf
