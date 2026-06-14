@@ -124,8 +124,9 @@ while True:
     email_ids = fetch_email_IDS()
     if last_seen not in email_ids:
         latest_messages = email_ids
-    last_index = email_ids.index(last_seen)
-    latest_messages = email_ids[last_index + 1 :]
+    else:
+        last_index = email_ids.index(last_seen)
+        latest_messages = email_ids[last_index + 1 :]
     print("Latest Message/s: ", latest_messages)
     for latest_message in latest_messages:
         Mail = get_email(latest_message)
