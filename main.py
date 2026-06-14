@@ -41,8 +41,9 @@ def get_email(latest_message):
             raw_email = item[1]
             break
     if raw_email == None:
+        logs(f"Email Received...\n")
         return None
-    logs(f"Email Received...\n")
+    logs(f"Email not found...\n")
     mail = email.message_from_bytes(raw_email)
     return mail
 
@@ -113,8 +114,10 @@ imap.select("INBOX")
 logs(f"\nGmail account Logged in succesfully! \n")
 
 email_ids = fetch_email_IDS()
+emails_exist = bool(email_ids)
 if email_ids:
     last_seen = email_ids[-1]
+    last_index = email_ids.index(last_seen)
 else:
     last_seen = b"0"
 print("Last seen:", last_seen)
@@ -123,7 +126,10 @@ while True:
     time.sleep(interval_time)
     email_ids = fetch_email_IDS()
     if last_seen not in email_ids:
-        latest_messages = email_ids
+        if not emails_exist:
+            latest_messages = email_ids
+        else: 
+            latest_messages = email_ids[last_index :]
     else:
         last_index = email_ids.index(last_seen)
         latest_messages = email_ids[last_index + 1 :]
@@ -145,5 +151,7 @@ while True:
         for file_name, file_data in attachments:
             send_documents(file_name, file_data)
         last_seen = latest_message
+        last_index = email_ids.index(last_seen)
+        emails_exist = True
         # print(Mail.get_content_type())
         # print(Mail.is_multipart)
