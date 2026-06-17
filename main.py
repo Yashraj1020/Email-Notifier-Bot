@@ -4,30 +4,37 @@ import time
 import email
 from email.header import decode_header
 from bs4 import BeautifulSoup
-from confidentials import Chat_id, bot_token, app_password, api_key, Prompt_template
+from confidentials import Chat_id, bot_token, app_password, api_key, Prompt_template, help
 from google import genai
 from datetime import datetime
 import json
 
 client = genai.Client(api_key= api_key)
 
-def sendMessage(message):
-    url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
-    requests.post(
-        url, 
-        data= {"chat_id": Chat_id, "text": message},
-        )
-    logs("Message Sent\n")
-
+def sendMessage(message, Chat_id):
+    try:
+        url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
+        requests.post(
+            url, 
+            data= {"chat_id": Chat_id, "text": message},
+            timeout=10
+            )
+        logs("Message Sent\n")
+    except Exception as e:
+        print("telegram send failed",e)
 def send_documents(file_name, file_data):
-    url = f"https://api.telegram.org/bot{bot_token}/sendDocument"
-    requests.post(
-        url,
-        data={"chat_id": Chat_id},
-        files= {"document": (file_name, file_data)}
-    )
-    logs("Attachments sent \n")
-    print(file_name, len(file_data))
+    try:
+        url = f"https://api.telegram.org/bot{bot_token}/sendDocument"
+        requests.post(
+            url,
+            data={"chat_id": Chat_id},
+            files= {"document": (file_name, file_data)},
+            timeout=10
+        )
+        logs("Attachments sent \n")
+        print(file_name)
+    except Exception as e:
+        print("document send failed",e)
 def fetch_email_IDS():
     imap.noop()
     status, messages = imap.search(None, "ALL")
@@ -41,9 +48,9 @@ def get_email(latest_message):
             raw_email = item[1]
             break
     if raw_email == None:
-        logs(f"Email Received...\n")
+        logs(f"Email Not Received...\n")
         return None
-    logs(f"Email not found...\n")
+    logs(f"Email found...\n")
     mail = email.message_from_bytes(raw_email)
     return mail
 
@@ -101,6 +108,42 @@ def process_attachments(Mail):
             folder.append((file_name, file_data))
     return folder
 
+def check_tele_updates(last_update_id):
+        try:
+            url = f"https://api.telegram.org/bot{bot_token}/getUpdates"
+            response = requests.get(url,  params={"offset": last_update_id + 1}, timeout=10)
+            data = response.json()
+            updates = data["result"]
+            if not updates:
+                return None
+            commands = []
+            for update in updates:
+                command = update["message"]["text"]
+                chat_id = update["message"]["chat"]["id"]
+                update_id = update["update_id"]
+                commands.append({"command" : command, "chat_id": chat_id, "update_id": update_id})
+            return commands
+        except Exception as e:
+            print("update fetch failed: ",e)
+            return None
+
+def process_tele_updates(commands):
+    if not commands:
+        return None
+    for command in commands:
+        update_id = command["update_id"]
+        chat_id = command["chat_id"]
+        if command["command"] == "/help":
+            sendMessage(help, chat_id)
+        elif command["command"] == "/latest":
+            sendMessage(latest_email_info, chat_id)
+        elif command["command"] == "/status":
+            status = f"🟢Bot Status\nLast Email ID: {last_seen.decode()}\nCheck Interval: {interval_time}s\nLast Update ID: {last_update_id}"
+            sendMessage(status, chat_id)
+        else:
+            sendMessage("Unownk command!\nPlease enter a valid command...", chat_id)
+    return update_id
+
 with open("config.json") as f:
     config = json.load(f)
     interval_time = config["Interval_time"]
@@ -112,6 +155,17 @@ imap = imaplib.IMAP4_SSL("imap.gmail.com")
 imap.login(gmail,  app_password)
 imap.select("INBOX")
 logs(f"\nGmail account Logged in succesfully! \n")
+print("Initializing Telegram...")
+last_update_id = 0
+
+try:
+    url = f"https://api.telegram.org/bot{bot_token}/getUpdates"
+    response = requests.get(url, timeout=10)
+    updates = response.json()["result"]
+    if updates:
+        last_update_id = updates[-1]["update_id"]
+except Exception as e:
+    print("1st Update fetching failed", e)
 
 email_ids = fetch_email_IDS()
 emails_exist = bool(email_ids)
@@ -121,7 +175,12 @@ if email_ids:
 else:
     last_seen = b"0"
 print("Last seen:", last_seen)
+latest_email_info = "No emails have been processed yet."
 while True:
+    commands = check_tele_updates(last_update_id)
+    new_update_id = process_tele_updates(commands)
+    if new_update_id is not None:
+        last_update_id = new_update_id
     print("checking...")
     time.sleep(interval_time)
     email_ids = fetch_email_IDS()
@@ -134,24 +193,28 @@ while True:
         last_index = email_ids.index(last_seen)
         latest_messages = email_ids[last_index + 1 :]
     print("Latest Message/s: ", latest_messages)
-    for latest_message in latest_messages:
-        Mail = get_email(latest_message)
-        if Mail is None:
-            continue
-        # print(Mail.keys())
-        text = extract_body(Mail)
-        if text is not None:
-            summary = get_AI_summary(text, client)
-        else: 
-            summary = None
-        attachments = process_attachments(Mail)
-        number_of_attachments = len(attachments)
-        message = format_message(Mail, text, summary, [name for name, _ in attachments], number_of_attachments)
-        sendMessage(message)
-        for file_name, file_data in attachments:
-            send_documents(file_name, file_data)
-        last_seen = latest_message
-        last_index = email_ids.index(last_seen)
-        emails_exist = True
+    try:
+        for latest_message in latest_messages:
+            Mail = get_email(latest_message)
+            if Mail is None:
+                continue
+            # print(Mail.keys())
+            text = extract_body(Mail)
+            if text is not None:
+                summary = get_AI_summary(text, client)
+            else: 
+                summary = None
+            attachments = process_attachments(Mail)
+            number_of_attachments = len(attachments)
+            message = format_message(Mail, text, summary, [name for name, _ in attachments], number_of_attachments)
+            sendMessage(message, Chat_id)
+            for file_name, file_data in attachments:
+                send_documents(file_name, file_data)
+            last_seen = latest_message
+            last_index = email_ids.index(last_seen)
+            emails_exist = True
+            latest_email_info = message
+    except Exception as e:
+        print("Error", e)
         # print(Mail.get_content_type())
         # print(Mail.is_multipart)
