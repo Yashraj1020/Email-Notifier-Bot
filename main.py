@@ -117,11 +117,12 @@ def check_tele_updates(last_update_id):
             if not updates:
                 return None
             commands = []
-            for update in updates:
+            for i, update in enumerate(updates, start=1):
                 command = update["message"]["text"]
                 chat_id = update["message"]["chat"]["id"]
                 update_id = update["update_id"]
                 commands.append({"command" : command, "chat_id": chat_id, "update_id": update_id})
+            logs(f"Recieved {i} update/s")
             return commands
         except Exception as e:
             print("update fetch failed: ",e)
